@@ -154,6 +154,6 @@ func TestErrorEquality(t *testing.T) {
 		{New("EOF"), Wrap(io.EOF, "EOF")},
 	}
 	for _, tt := range tests {
-		_ = tt.err1 == tt.err2 // mustn't panic
+		_ = reflect.DeepEqual(tt.err1, tt.err2) // mustn't panic
 	}
 }

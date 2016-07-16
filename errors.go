@@ -90,6 +90,7 @@ import (
 type _error struct {
 	msg string
 	*stack
+	fields Fields
 }
 
 func (e _error) Error() string { return e.msg }
@@ -108,11 +109,24 @@ func (e _error) Format(s fmt.State, verb rune) {
 	}
 }
 
+func (e _error) Fields() Fields {
+	return e.fields
+}
+
 // New returns an error with the supplied message.
 func New(message string) error {
 	return _error{
-		message,
-		callers(),
+		msg:   message,
+		stack: callers(),
+	}
+}
+
+// New returns an error with the supplied message and fields.
+func NewWithFields(message string, fields Fields) error {
+	return _error{
+		msg:    message,
+		stack:  callers(),
+		fields: fields,
 	}
 }
 
@@ -120,8 +134,8 @@ func New(message string) error {
 // as a value that satisfies error.
 func Errorf(format string, args ...interface{}) error {
 	return _error{
-		fmt.Sprintf(format, args...),
-		callers(),
+		msg:   fmt.Sprintf(format, args...),
+		stack: callers(),
 	}
 }
 
@@ -138,6 +152,7 @@ func (c cause) Cause() error  { return c.cause }
 type wrapper struct {
 	cause
 	*stack
+	fields Fields
 }
 
 func (w wrapper) Format(s fmt.State, verb rune) {
@@ -155,6 +170,10 @@ func (w wrapper) Format(s fmt.State, verb rune) {
 	case 'q':
 		fmt.Fprintf(s, "%q", w.Error())
 	}
+}
+
+func (w wrapper) Fields() Fields {
+	return w.fields
 }
 
 // Wrap returns an error annotating err with message.
@@ -187,6 +206,23 @@ func Wrapf(err error, format string, args ...interface{}) error {
 	}
 }
 
+// WrapWithFields returns an error annotating err with message
+// and adding fields.
+// If err is nil, Wrap returns nil.
+func WrapWithFields(err error, message string, fields Fields) error {
+	if err == nil {
+		return nil
+	}
+	return wrapper{
+		cause: cause{
+			cause: err,
+			msg:   message,
+		},
+		stack:  callers(),
+		fields: fields,
+	}
+}
+
 // Cause returns the underlying cause of the error, if possible.
 // An error value has a cause if it implements the following
 // interface:
@@ -211,4 +247,51 @@ func Cause(err error) error {
 		err = cause.Cause()
 	}
 	return err
+}
+
+// CauseOrWrapperWithFields returns the underlying cause or wrapper with fields set, if possible.
+// An error value has a cause if it implements the following
+// interface:
+//
+//     type Causer interface {
+//            Cause() error
+//     }
+//
+// An error value has fields if it implements the following
+// interface:
+//
+//     type Fieldser interface {
+//            Fields() Fields
+//     }
+//
+// If the error does not implement Cause, the original error will
+// be returned. If the error is nil, nil will be returned without further
+// investigation.
+func CauseOrWrapperWithFields(err error) error {
+	type fieldser interface {
+		Fields() Fields
+	}
+
+	type causer interface {
+		Cause() error
+	}
+
+	var lastErrWithFields error
+	for err != nil {
+		_, ok := err.(fieldser)
+		if ok {
+			lastErrWithFields = err
+		}
+
+		cause, ok := err.(causer)
+		if !ok {
+			break
+		}
+		err = cause.Cause()
+	}
+	if lastErrWithFields != nil {
+		return lastErrWithFields
+	} else {
+		return err
+	}
 }

@@ -2,6 +2,7 @@ package errors_test
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/pkg/errors"
 )
@@ -149,4 +150,46 @@ func ExampleCause_printf() {
 	fmt.Printf("%v", err)
 
 	// Output: failed: hello world
+}
+
+func ExampleCauseOrWrapperWithFields_cause() {
+	fn := func(filename string) error {
+		return errors.NewWithFields("my own error",
+			errors.Fields{"filename": filename})
+	}
+
+	type fieldser interface {
+		Fields() errors.Fields
+	}
+
+	err := errors.CauseOrWrapperWithFields(fn("some_non_exist_file"))
+	err2, ok := err.(fieldser)
+	if ok {
+		fmt.Printf("filename=%s\n", err2.Fields()["filename"])
+	}
+	// Output: filename=some_non_exist_file
+}
+
+func ExampleCauseOrWrapperWithFields_wrapper() {
+	fn := func(filename string) error {
+		f, err := os.Open(filename)
+		if err != nil {
+			return errors.WrapWithFields(err, "failed to open file",
+				errors.Fields{"filename": filename})
+		}
+		defer f.Close()
+
+		return nil
+	}
+
+	type fieldser interface {
+		Fields() errors.Fields
+	}
+
+	err := errors.CauseOrWrapperWithFields(fn("some_non_exist_file"))
+	err2, ok := err.(fieldser)
+	if ok {
+		fmt.Printf("filename=%s\n", err2.Fields()["filename"])
+	}
+	// Output: filename=some_non_exist_file
 }
